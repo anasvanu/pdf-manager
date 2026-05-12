@@ -7,6 +7,7 @@ import json
 
 from pdf_manager import merge_pdfs, generate_thumbnails, apply_annotations_and_rearrange, convert_to_pptx
 from typing import List, Optional
+from supabase_client import upload_to_supabase, download_from_supabase
 
 app = FastAPI()
 
@@ -18,7 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = "uploads"
+# Use a temporary local directory for processing
+UPLOAD_DIR = "/tmp/uploads" if os.name != 'nt' else "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @app.post("/upload")
@@ -33,8 +35,12 @@ async def upload_pdfs(files: List[UploadFile] = File(...), session_id: Optional[
     os.makedirs(session_dir, exist_ok=True)
     
     saved_paths = []
-    # If a merged.pdf already exists, we want to append to it.
     merged_path = os.path.join(session_dir, "merged.pdf")
+    
+    # Check if a merged.pdf already exists locally, if not try downloading from Supabase
+    if not os.path.exists(merged_path):
+        download_from_supabase(f"{session_id}/merged.pdf", merged_path)
+        
     if os.path.exists(merged_path):
         saved_paths.append(merged_path)
         
@@ -54,6 +60,9 @@ async def upload_pdfs(files: List[UploadFile] = File(...), session_id: Optional[
         os.remove(merged_path)
     os.rename(temp_merged, merged_path)
     
+    # Backup the merged PDF to Supabase
+    upload_to_supabase(merged_path, f"{session_id}/merged.pdf")
+    
     thumbnails = generate_thumbnails(merged_path)
     
     return {"session_id": session_id, "thumbnails": thumbnails}
@@ -69,7 +78,9 @@ async def process_pdf(
     merged_path = os.path.join(session_dir, "merged.pdf")
     
     if not os.path.exists(merged_path):
-        raise HTTPException(status_code=404, detail="Session not found")
+        # Try downloading from Supabase
+        if not download_from_supabase(f"{session_id}/merged.pdf", merged_path):
+            raise HTTPException(status_code=404, detail="Session not found")
         
     try:
         order_list = json.loads(new_order)
@@ -81,13 +92,17 @@ async def process_pdf(
     rearranged_pdf_path = os.path.join(session_dir, "rearranged.pdf")
     apply_annotations_and_rearrange(merged_path, order_list, anns_list, rearranged_pdf_path)
     
+    # Save the new version as the primary merged PDF so subsequent edits build on it
+    os.replace(rearranged_pdf_path, merged_path)
+    upload_to_supabase(merged_path, f"{session_id}/merged.pdf")
+    
     if output_format.lower() == "pptx":
         out_path = os.path.join(session_dir, "output.pptx")
-        convert_to_pptx(rearranged_pdf_path, out_path)
+        convert_to_pptx(merged_path, out_path)
         media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         filename = "converted.pptx"
     else:
-        out_path = rearranged_pdf_path
+        out_path = merged_path
         media_type = "application/pdf"
         filename = "processed.pdf"
         
@@ -107,8 +122,11 @@ async def update_thumbnail(
 ):
     session_dir = os.path.join(UPLOAD_DIR, session_id)
     merged_path = os.path.join(session_dir, "merged.pdf")
+    
     if not os.path.exists(merged_path):
-        raise HTTPException(status_code=404, detail="Session not found")
+        # Try downloading from Supabase
+        if not download_from_supabase(f"{session_id}/merged.pdf", merged_path):
+            raise HTTPException(status_code=404, detail="Session not found")
         
     try:
         ann_list = json.loads(annotations)
