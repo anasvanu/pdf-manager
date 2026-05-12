@@ -3,10 +3,10 @@ import axios from 'axios';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { UploadCloud, FileText, Download, X, RefreshCw, Edit2, Plus, Type, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Pipette, Undo, Redo, Save, Underline, Square, Circle, Image as ImageIcon } from 'lucide-react';
+import { UploadCloud, FileText, Download, X, RefreshCw, Edit2, Plus, Type, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Pipette, Undo, Redo, Save, Underline, Square, Circle, Image as ImageIcon, Triangle, Minus } from 'lucide-react';
 import { Rnd } from 'react-rnd';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'https://pdf-manager-k1ju.onrender.com';
 
 function SortableItem({ id, url, index, originalIndex, pageData, onRemove, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
